@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>LKS Live Competition Dashboard</title>
+<title>LKS LIVE COMPETITION DASHBOARD</title>
 
 <style>
 
@@ -13,6 +13,14 @@ background:#fafafa;
 
 h2{
 text-align:center;
+margin-bottom:5px;
+}
+
+#countdown{
+text-align:center;
+margin-bottom:15px;
+font-weight:bold;
+color:#555;
 }
 
 table{
@@ -30,41 +38,24 @@ th{
 background:#eee;
 }
 
-.active{color:green;font-weight:bold;}
-.warn{color:orange;font-weight:bold;}
-.idle{color:red;font-weight:bold;}
+.empty{
+text-align:center;
+padding:20px;
+color:#666;
+font-style:italic;
+}
 
 </style>
 </head>
 <body>
 
 <h2 id="leader">🏁 LKS LIVE COMPETITION DASHBOARD</h2>
+<p id="countdown"></p>
 
-<table id="board">
-
-<tr>
-<th>Rank</th>
-<th>Repo</th>
-<th>Score</th>
-<th>Activity</th>
-<th>Idle Status</th>
-<th>Last Commit</th>
-<th>Commits</th>
-<th>Workflow</th>
-<th>Events</th>
-</tr>
-
-</table>
-
+<table id="board"></table>
 
 <script>
 
-
-/*
-SET START TIME LOMBA DI SINI
-FORMAT: YYYY-MM-DDTHH:mm:ss
-WIB = UTC+7
-*/
 
 const COMPETITION_START =
 new Date("2026-04-01T09:10:00+07:00");
@@ -103,9 +94,70 @@ return "OK";
 
 
 
+function updateCountdown(){
+
+let now=new Date();
+
+let diff=COMPETITION_START-now;
+
+if(diff<=0){
+
+document.getElementById("countdown").innerText =
+"Competition is running...";
+
+return;
+
+}
+
+let minutes=Math.floor(diff/60000);
+
+document.getElementById("countdown").innerText =
+"Competition starts in "+minutes+" minutes";
+
+}
+
+
+
 async function loadDashboard(){
 
+const table=document.getElementById("board");
+
+
+table.innerHTML=`
+
+<tr>
+<th>Rank</th>
+<th>Repo</th>
+<th>Score</th>
+<th>Activity</th>
+<th>Idle</th>
+<th>Last Commit</th>
+<th>Events</th>
+<th>Workflow</th>
+</tr>
+`;
+
+
+if(new Date()<COMPETITION_START){
+
+document.getElementById("leader").innerText =
+"⏳ Competition has not started yet";
+
+table.innerHTML+=`
+<tr>
+<td colspan="8" class="empty">
+Waiting for competition start time (09:10 WIB)
+</td>
+</tr>
+`;
+
+return;
+
+}
+
+
 let rows=[];
+
 
 for(let repo of repos){
 
@@ -117,25 +169,6 @@ let commit=await fetch(
 
 
 let commitTime=new Date(commit.commit.author.date);
-
-
-if(commitTime<COMPETITION_START){
-
-rows.push({
-
-name:repo.name,
-score:0,
-activity:"Waiting Start",
-idle:"-",
-commit:"-",
-count:0,
-workflow:"-"
-
-});
-
-continue;
-
-}
 
 
 let score=0;
@@ -151,30 +184,20 @@ score=parseInt(scoreData.score);
 }catch{}
 
 
-let events=await fetch(
-`https://api.github.com/repos/${repo.repo}/events`
-).then(r=>r.json());
+let workflowIcon="⏳";
 
-
-let filteredEvents=
-events.filter(e =>
-new Date(e.created_at)>COMPETITION_START
-);
-
+try{
 
 let workflowRuns=await fetch(
 `https://api.github.com/repos/${repo.repo}/actions/runs?per_page=1`
 ).then(r=>r.json());
 
+let status=workflowRuns.workflow_runs?.[0]?.conclusion;
 
-let workflowStatus=
-workflowRuns.workflow_runs[0]?.conclusion ?? "running";
+if(status==="success") workflowIcon="✅";
+if(status==="failure") workflowIcon="❌";
 
-
-let workflowIcon="⏳";
-
-if(workflowStatus==="success") workflowIcon="✅";
-if(workflowStatus==="failure") workflowIcon="❌";
+}catch{}
 
 
 rows.push({
@@ -184,62 +207,42 @@ score:score,
 activity:activityStatus(commitTime),
 idle:idleStatus(commitTime),
 commit:commit.commit.message,
-count:filteredEvents.length,
 workflow:workflowIcon
 
 });
 
-}catch(err){
 
-console.log(repo.name,"error");
+}catch(e){
+
+console.log(repo.name,"fetch error");
 
 }
 
 }
+
 
 
 rows.sort((a,b)=>b.score-a.score);
 
 
-render(rows);
-
-}
-
-
-
-function render(rows){
-
-let table=document.getElementById("board");
-
 rows.forEach((r,i)=>{
 
-let html=`
+table.innerHTML+=`
 
 <tr>
 
 <td>${i+1}</td>
-
 <td>${r.name}</td>
-
 <td><b>${r.score}/100</b></td>
-
 <td>${r.activity}</td>
-
 <td>${r.idle}</td>
-
 <td>${r.commit}</td>
-
-<td>${r.count}</td>
-
-<td>${r.workflow}</td>
-
 <td>Tracked</td>
+<td>${r.workflow}</td>
 
 </tr>
 
 `;
-
-table.innerHTML+=html;
 
 });
 
@@ -247,7 +250,6 @@ table.innerHTML+=html;
 if(rows.length>0){
 
 document.getElementById("leader").innerText=
-
 "🏆 Leading: "+rows[0].name+" ("+rows[0].score+")";
 
 }
@@ -256,13 +258,11 @@ document.getElementById("leader").innerText=
 
 
 
+updateCountdown();
+
+setInterval(updateCountdown,1000);
+
 loadDashboard();
-
-
-
-/*
-AUTO REFRESH (AMAN DARI RATE LIMIT)
-*/
 
 setInterval(loadDashboard,15000);
 
