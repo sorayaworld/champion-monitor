@@ -2,14 +2,13 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>LKS Activity Monitor PRO</title>
+<title>LKS Live Competition Dashboard</title>
 
 <style>
 
 body{
 font-family:Arial;
 background:#fafafa;
-padding:20px;
 }
 
 h2{
@@ -19,63 +18,27 @@ text-align:center;
 table{
 border-collapse:collapse;
 width:100%;
-margin-top:20px;
 }
 
 td,th{
 border:1px solid #ccc;
 padding:8px;
 font-size:14px;
-text-align:center;
 }
 
 th{
 background:#eee;
 }
 
-.progress{
-height:10px;
-background:#ddd;
-border-radius:4px;
-overflow:hidden;
-}
-
-.bar{
-height:100%;
-}
-
-.active{
-color:green;
-font-weight:bold;
-}
-
-.idle30{
-color:orange;
-font-weight:bold;
-}
-
-.idle60{
-color:red;
-font-weight:bold;
-}
-
-.leader{
-background:#e8fff1;
-font-weight:bold;
-}
-
-.timeline{
-font-size:11px;
-color:#666;
-}
+.active{color:green;font-weight:bold;}
+.warn{color:orange;font-weight:bold;}
+.idle{color:red;font-weight:bold;}
 
 </style>
 </head>
 <body>
 
-<h2>🏁 LKS LIVE COMPETITION DASHBOARD</h2>
-
-<div id="leader"></div>
+<h2 id="leader">🏁 LKS LIVE COMPETITION DASHBOARD</h2>
 
 <table id="board">
 
@@ -93,66 +56,58 @@ color:#666;
 
 </table>
 
+
 <script>
+
+
+/*
+SET START TIME LOMBA DI SINI
+FORMAT: YYYY-MM-DDTHH:mm:ss
+WIB = UTC+7
+*/
+
+const COMPETITION_START =
+new Date("2026-04-01T09:10:00+07:00");
+
 
 const repos=[
 
 { name:"Champion UMKM", repo:"sorayaworld/champion-umkm" },
-{ name:"Champion Desktop", repo:"sorayaworld/champion-dekstop" },
+{ name:"Champion Desktop", repo:"sorayaworld/champion-desktop" },
 { name:"Champion Mobile", repo:"sorayaworld/champion-mobile-umkm" },
 { name:"Champion Laravel", repo:"sorayaworld/champion-laravel" }
 
 ];
 
 
-function timeAgo(date){
 
-let seconds=Math.floor((new Date()-new Date(date))/1000);
+function activityStatus(date){
 
-if(seconds<300) return "🔥 ACTIVE";
-if(seconds<1800) return "🟢 5-30m";
-if(seconds<3600) return "🟠 30-60m";
-return "🔴 >60m";
+let seconds=Math.floor((new Date()-date)/1000);
 
-}
-
-
-function idleClass(date){
-
-let seconds=Math.floor((new Date()-new Date(date))/1000);
-
-if(seconds<300) return "active";
-if(seconds<1800) return "";
-if(seconds<3600) return "idle30";
-return "idle60";
+if(seconds<300) return "🔥 Active Now";
+if(seconds<1800) return "🟢 Active";
+return "🟡 Slow";
 
 }
 
 
-function scoreColor(score){
+function idleStatus(date){
 
-if(score>=80) return "#27ae60";
-if(score>=50) return "#f39c12";
-return "#e74c3c";
+let seconds=Math.floor((new Date()-date)/1000);
 
-}
-
-
-function progressBar(score){
-
-return `
-<div class="progress">
-<div class="bar" style="
-width:${score}%;
-background:${scoreColor(score)};
-"></div>
-</div>
-`;
+if(seconds>1800) return "🚨 Idle >30m";
+return "OK";
 
 }
 
 
-async function loadRepo(repo){
+
+async function loadDashboard(){
+
+let rows=[];
+
+for(let repo of repos){
 
 try{
 
@@ -160,13 +115,27 @@ let commit=await fetch(
 `https://api.github.com/repos/${repo.repo}/commits/main`
 ).then(r=>r.json());
 
-let commitTime=commit.commit.author.date;
 
-let totalCommits=await fetch(
-`https://api.github.com/repos/${repo.repo}/commits?per_page=1`
-);
+let commitTime=new Date(commit.commit.author.date);
 
-let commitCount=totalCommits.headers.get("link")?.match(/page=(\d+)>; rel="last"/)?.[1]||1;
+
+if(commitTime<COMPETITION_START){
+
+rows.push({
+
+name:repo.name,
+score:0,
+activity:"Waiting Start",
+idle:"-",
+commit:"-",
+count:0,
+workflow:"-"
+
+});
+
+continue;
+
+}
 
 
 let score=0;
@@ -177,21 +146,9 @@ let scoreData=await fetch(
 `https://raw.githubusercontent.com/${repo.repo}/main/public/score.json`
 ).then(r=>r.json());
 
-score=scoreData.score;
+score=parseInt(scoreData.score);
 
 }catch{}
-
-
-let workflow=await fetch(
-`https://api.github.com/repos/${repo.repo}/actions/runs?per_page=1`
-).then(r=>r.json());
-
-let wf=workflow.workflow_runs[0]?.conclusion||"unknown";
-
-let wfIcon="⏳";
-
-if(wf=="success") wfIcon="✅";
-if(wf=="failure") wfIcon="❌";
 
 
 let events=await fetch(
@@ -199,114 +156,116 @@ let events=await fetch(
 ).then(r=>r.json());
 
 
-let timeline=events
-.slice(0,3)
-.map(e=>e.type)
-.join(" → ");
+let filteredEvents=
+events.filter(e =>
+new Date(e.created_at)>COMPETITION_START
+);
 
 
-return{
+let workflowRuns=await fetch(
+`https://api.github.com/repos/${repo.repo}/actions/runs?per_page=1`
+).then(r=>r.json());
+
+
+let workflowStatus=
+workflowRuns.workflow_runs[0]?.conclusion ?? "running";
+
+
+let workflowIcon="⏳";
+
+if(workflowStatus==="success") workflowIcon="✅";
+if(workflowStatus==="failure") workflowIcon="❌";
+
+
+rows.push({
 
 name:repo.name,
 score:score,
-commitTime:commitTime,
-commitMsg:commit.commit.message,
-commits:commitCount,
-workflow:wfIcon,
-timeline:timeline
+activity:activityStatus(commitTime),
+idle:idleStatus(commitTime),
+commit:commit.commit.message,
+count:filteredEvents.length,
+workflow:workflowIcon
 
-};
+});
 
-}catch(e){
+}catch(err){
 
-console.log(e);
-
-}
+console.log(repo.name,"error");
 
 }
 
+}
 
 
-async function buildDashboard(){
-
-let results=await Promise.all(repos.map(loadRepo));
-
-results.sort((a,b)=>b.score-a.score);
+rows.sort((a,b)=>b.score-a.score);
 
 
-document.getElementById("board").innerHTML=`
+render(rows);
+
+}
+
+
+
+function render(rows){
+
+let table=document.getElementById("board");
+
+rows.forEach((r,i)=>{
+
+let html=`
 
 <tr>
-<th>Rank</th>
-<th>Repo</th>
-<th>Score</th>
-<th>Activity</th>
-<th>Idle Status</th>
-<th>Last Commit</th>
-<th>Commits</th>
-<th>Workflow</th>
-<th>Events</th>
-</tr>
 
-`;
-
-
-results.forEach((r,i)=>{
-
-let idle=timeAgo(r.commitTime);
-
-let row=`
-
-<tr class="${i==0?'leader':''}">
-
-<td>#${i+1}</td>
+<td>${i+1}</td>
 
 <td>${r.name}</td>
 
-<td>
+<td><b>${r.score}/100</b></td>
 
-${r.score}/100
+<td>${r.activity}</td>
 
-${progressBar(r.score)}
+<td>${r.idle}</td>
 
-</td>
+<td>${r.commit}</td>
 
-<td>${idle}</td>
-
-<td class="${idleClass(r.commitTime)}">
-
-${new Date(r.commitTime).toLocaleTimeString()}
-
-</td>
-
-<td>${r.commitMsg}</td>
-
-<td>${r.commits}</td>
+<td>${r.count}</td>
 
 <td>${r.workflow}</td>
 
-<td class="timeline">${r.timeline}</td>
+<td>Tracked</td>
 
 </tr>
 
 `;
 
-document.getElementById("board").innerHTML+=row;
+table.innerHTML+=html;
 
 });
 
 
-document.getElementById("leader").innerHTML=
+if(rows.length>0){
 
-"👑 Leader sementara: <b>"+results[0].name+"</b>";
+document.getElementById("leader").innerText=
+
+"🏆 Leading: "+rows[0].name+" ("+rows[0].score+")";
+
+}
 
 }
 
 
 
-buildDashboard();
+loadDashboard();
 
-setInterval(buildDashboard,30000);
+
+
+/*
+AUTO REFRESH (AMAN DARI RATE LIMIT)
+*/
+
+setInterval(loadDashboard,15000);
+
 
 </script>
 
