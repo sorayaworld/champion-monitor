@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>LKS Leaderboard Monitor</title>
+
+<style>
+body { font-family: Arial; background:#fafafa; }
+table { border-collapse: collapse; width:100%; }
+td, th { border:1px solid #ccc; padding:10px; }
+th { background:#eee; }
+h2 { text-align:center; }
+</style>
+</head>
+<body>
+
+<h2>🏁 LKS Auto Judge Leaderboard</h2>
+
+<table id="board">
+<tr>
+<th>Repository</th>
+<th>Last Commit</th>
+<th>Author</th>
+<th>Score</th>
+<th>Status</th>
+</tr>
+</table>
+
+
+<script>
+
+const repos = [
+
+{
+name:"Champion UMKM",
+repo:"sorayaworld/champion-umkm",
+workflow:"judge.yml"
+},
+
+{
+name:"Champion Desktop",
+repo:"sorayaworld/champion-dekstop",
+workflow:"judge.yml"
+},
+
+{
+name:"Champion Mobile",
+repo:"sorayaworld/champion-mobile-umkm",
+workflow:"judge.yml"
+},
+
+{
+name:"Champion Laravel",
+repo:"sorayaworld/champion-laravel",
+workflow:"judge.yml"
+}
+
+];
+
+
+async function loadRepo(data){
+
+let commit = await fetch(
+`https://api.github.com/repos/${data.repo}/commits/main`
+).then(r=>r.json());
+
+
+let badge =
+`https://github.com/${data.repo}/actions/workflows/${data.workflow}/badge.svg`;
+
+
+let score = "loading...";
+
+try{
+
+let runs = await fetch(
+`https://api.github.com/repos/${data.repo}/actions/runs?per_page=1`
+).then(r=>r.json());
+
+let status = runs.workflow_runs[0].conclusion;
+
+if(status==="success")
+score="✅ Checked";
+
+else if(status==="failure")
+score="❌ Failed";
+
+else
+score="⏳ Running";
+
+}catch(e){
+
+score="Unknown";
+
+}
+
+
+let row = `
+<tr>
+<td>${data.name}</td>
+<td>${commit.commit.message}</td>
+<td>${commit.commit.author.name}</td>
+<td>${score}</td>
+<td><img src="${badge}"></td>
+</tr>
+`;
+
+document.getElementById("board").innerHTML += row;
+
+}
+
+
+repos.forEach(loadRepo);
+
+</script>
+
+</body>
+</html>
