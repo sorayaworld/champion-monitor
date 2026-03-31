@@ -2,60 +2,72 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>LKS Leaderboard Monitor</title>
+<title>LKS Activity Leaderboard</title>
 
 <style>
 body { font-family: Arial; background:#fafafa; }
 table { border-collapse: collapse; width:100%; }
-td, th { border:1px solid #ccc; padding:10px; }
+td, th { border:1px solid #ccc; padding:8px; font-size:14px; }
 th { background:#eee; }
 h2 { text-align:center; }
+small { color:#666; }
 </style>
 </head>
 <body>
 
-<h2>🏁 LKS Auto Judge Leaderboard</h2>
+<h2>🏁 LKS Live Activity Monitor</h2>
 
 <table id="board">
 <tr>
-<th>Repository</th>
-<th>Last Commit</th>
-<th>Author</th>
+<th>Repo</th>
 <th>Score</th>
+<th>Last Commit</th>
+<th>User</th>
+<th>Time</th>
+<th>Relative</th>
+<th>Commits (24h)</th>
+<th>PR Open</th>
+<th>Branches</th>
+<th>Last Event</th>
 <th>Status</th>
 </tr>
 </table>
-
 
 <script>
 
 const repos = [
 
-{
-name:"Champion UMKM",
-repo:"sorayaworld/champion-umkm",
-workflow:"judge.yml"
-},
-
-{
-name:"Champion Desktop",
-repo:"sorayaworld/champion-dekstop",
-workflow:"judge.yml"
-},
-
-{
-name:"Champion Mobile",
-repo:"sorayaworld/champion-mobile-umkm",
-workflow:"judge.yml"
-},
-
-{
-name:"Champion Laravel",
-repo:"sorayaworld/champion-laravel",
-workflow:"judge.yml"
-}
+{ name:"Champion UMKM", repo:"sorayaworld/champion-umkm" },
+{ name:"Champion Desktop", repo:"sorayaworld/champion-dekstop" },
+{ name:"Champion Mobile", repo:"sorayaworld/champion-mobile-umkm" },
+{ name:"Champion Laravel", repo:"sorayaworld/champion-laravel" }
 
 ];
+
+
+function timeAgo(dateString){
+
+let seconds = Math.floor((new Date() - new Date(dateString))/1000);
+
+let intervals = [
+
+{label:"hari", value:86400},
+{label:"jam", value:3600},
+{label:"menit", value:60}
+
+];
+
+for(let i of intervals){
+
+let count = Math.floor(seconds/i.value);
+
+if(count>0) return count+" "+i.label+" lalu";
+
+}
+
+return seconds+" detik lalu";
+
+}
 
 
 async function loadRepo(data){
@@ -65,43 +77,90 @@ let commit = await fetch(
 ).then(r=>r.json());
 
 
-let badge =
-`https://github.com/${data.repo}/actions/workflows/${data.workflow}/badge.svg`;
-
-
-let score = "loading...";
+let score="--";
 
 try{
 
-let runs = await fetch(
-`https://api.github.com/repos/${data.repo}/actions/runs?per_page=1`
+let scoreData = await fetch(
+`https://raw.githubusercontent.com/${data.repo}/main/public/score.json`
 ).then(r=>r.json());
 
-let status = runs.workflow_runs[0].conclusion;
-
-if(status==="success")
-score="✅ Checked";
-
-else if(status==="failure")
-score="❌ Failed";
-
-else
-score="⏳ Running";
+score = scoreData.score + " / 100";
 
 }catch(e){
 
-score="Unknown";
+score="Not graded";
 
 }
 
 
+let events = await fetch(
+`https://api.github.com/repos/${data.repo}/events`
+).then(r=>r.json());
+
+
+let lastEvent = events[0]?.type || "-";
+
+
+let pulls = await fetch(
+`https://api.github.com/repos/${data.repo}/pulls`
+).then(r=>r.json());
+
+
+let branches = await fetch(
+`https://api.github.com/repos/${data.repo}/branches`
+).then(r=>r.json());
+
+
+let commits24h = events.filter(e =>
+
+e.type==="PushEvent" &&
+(new Date()-new Date(e.created_at) < 86400000)
+
+).length;
+
+
+let workflowRuns = await fetch(
+`https://api.github.com/repos/${data.repo}/actions/runs?per_page=1`
+).then(r=>r.json());
+
+
+let status = workflowRuns.workflow_runs[0]?.conclusion || "unknown";
+
+
+let statusIcon="⏳";
+
+if(status==="success") statusIcon="✅";
+if(status==="failure") statusIcon="❌";
+
+
+let commitTime = commit.commit.author.date;
+
 let row = `
 <tr>
+
 <td>${data.name}</td>
+
+<td><b>${score}</b></td>
+
 <td>${commit.commit.message}</td>
+
 <td>${commit.commit.author.name}</td>
-<td>${score}</td>
-<td><img src="${badge}"></td>
+
+<td>${new Date(commitTime).toLocaleTimeString()}</td>
+
+<td>${timeAgo(commitTime)}</td>
+
+<td>${commits24h}</td>
+
+<td>${pulls.length}</td>
+
+<td>${branches.length}</td>
+
+<td>${lastEvent}</td>
+
+<td>${statusIcon}</td>
+
 </tr>
 `;
 
