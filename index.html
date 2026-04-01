@@ -56,7 +56,6 @@ font-style:italic;
 
 <script>
 
-
 const COMPETITION_START =
 new Date("2026-04-01T09:10:00+07:00");
 
@@ -72,22 +71,18 @@ const repos=[
 
 
 
-function activityStatus(date){
+function activityStatus(score){
 
-let seconds=Math.floor((new Date()-date)/1000);
-
-if(seconds<300) return "🔥 Active Now";
-if(seconds<1800) return "🟢 Active";
-return "🟡 Slow";
+if(score>=80) return "🔥 Active";
+if(score>0) return "🟢 Progress";
+return "⏳ Waiting";
 
 }
 
 
-function idleStatus(date){
+function idleStatus(score){
 
-let seconds=Math.floor((new Date()-date)/1000);
-
-if(seconds>1800) return "🚨 Idle >30m";
+if(score===0) return "🚨 Idle";
 return "OK";
 
 }
@@ -131,9 +126,8 @@ table.innerHTML=`
 <th>Score</th>
 <th>Activity</th>
 <th>Idle</th>
-<th>Last Commit</th>
-<th>Events</th>
-<th>Workflow</th>
+<th>Status</th>
+<th>Source</th>
 </tr>
 `;
 
@@ -145,7 +139,7 @@ document.getElementById("leader").innerText =
 
 table.innerHTML+=`
 <tr>
-<td colspan="8" class="empty">
+<td colspan="7" class="empty">
 Waiting for competition start time (09:10 WIB)
 </td>
 </tr>
@@ -161,62 +155,31 @@ let rows=[];
 
 for(let repo of repos){
 
-try{
-
-let commit=await fetch(
-`https://api.github.com/repos/${repo.repo}/commits/main`
-).then(r=>r.json());
-
-
-let commitTime=new Date(commit.commit.author.date);
-
-
 let score=0;
 
 try{
 
 let scoreData=await fetch(
-`https://raw.githubusercontent.com/${repo.repo}/main/public/score.json`
+`https://raw.githubusercontent.com/${repo.repo}/main/public/score.json?cache=${Date.now()}`
 ).then(r=>r.json());
 
-score=parseInt(scoreData.score);
+score=parseInt(scoreData.score)||0;
 
-}catch{}
+}catch(e){
 
+console.log(repo.name,"score fetch error");
 
-let workflowIcon="⏳";
-
-try{
-
-let workflowRuns=await fetch(
-`https://api.github.com/repos/${repo.repo}/actions/runs?per_page=1`
-).then(r=>r.json());
-
-let status=workflowRuns.workflow_runs?.[0]?.conclusion;
-
-if(status==="success") workflowIcon="✅";
-if(status==="failure") workflowIcon="❌";
-
-}catch{}
+}
 
 
 rows.push({
 
 name:repo.name,
 score:score,
-activity:activityStatus(commitTime),
-idle:idleStatus(commitTime),
-commit:commit.commit.message,
-workflow:workflowIcon
+activity:activityStatus(score),
+idle:idleStatus(score)
 
 });
-
-
-}catch(e){
-
-console.log(repo.name,"fetch error");
-
-}
 
 }
 
@@ -236,9 +199,8 @@ table.innerHTML+=`
 <td><b>${r.score}/100</b></td>
 <td>${r.activity}</td>
 <td>${r.idle}</td>
-<td>${r.commit}</td>
 <td>Tracked</td>
-<td>${r.workflow}</td>
+<td>score.json</td>
 
 </tr>
 
@@ -264,8 +226,7 @@ setInterval(updateCountdown,1000);
 
 loadDashboard();
 
-setInterval(loadDashboard,60000);
-
+setInterval(loadDashboard,30000);
 
 </script>
 
