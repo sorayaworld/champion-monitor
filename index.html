@@ -5,7 +5,6 @@
 <title>LKS LIVE COMPETITION DASHBOARD</title>
 
 <style>
-
 body{
 font-family:Arial;
 background:#fafafa;
@@ -44,7 +43,6 @@ padding:20px;
 color:#666;
 font-style:italic;
 }
-
 </style>
 </head>
 <body>
@@ -70,23 +68,34 @@ const repos=[
 ];
 
 
+function minutesAgo(date){
 
-function activityStatus(score){
+let diff=Math.floor((new Date()-date)/60000);
 
-if(score>=80) return "🔥 Active";
-if(score>0) return "🟢 Progress";
-return "⏳ Waiting";
+return diff+" min ago";
 
 }
 
 
-function idleStatus(score){
+function activityStatus(date){
 
-if(score===0) return "🚨 Idle";
+let seconds=Math.floor((new Date()-date)/1000);
+
+if(seconds<300) return "🔥 Active Now";
+if(seconds<1800) return "🟢 Active";
+return "🟡 Slow";
+
+}
+
+
+function idleStatus(date){
+
+let seconds=Math.floor((new Date()-date)/1000);
+
+if(seconds>1800) return "🚨 Idle >30m";
 return "OK";
 
 }
-
 
 
 function updateCountdown(){
@@ -113,10 +122,51 @@ document.getElementById("countdown").innerText =
 
 
 
+async function getCommitTime(repo){
+
+let cacheKey="commit_"+repo;
+
+let cached=localStorage.getItem(cacheKey);
+
+if(cached){
+
+let parsed=JSON.parse(cached);
+
+if(Date.now()-parsed.time<300000){
+return new Date(parsed.value);
+}
+
+}
+
+try{
+
+let data=await fetch(
+`https://api.github.com/repos/${repo}/commits/main`
+).then(r=>r.json());
+
+let commitTime=data.commit.author.date;
+
+localStorage.setItem(cacheKey,
+JSON.stringify({
+value:commitTime,
+time:Date.now()
+}));
+
+return new Date(commitTime);
+
+}catch{
+
+return new Date();
+
+}
+
+}
+
+
+
 async function loadDashboard(){
 
 const table=document.getElementById("board");
-
 
 table.innerHTML=`
 
@@ -126,8 +176,7 @@ table.innerHTML=`
 <th>Score</th>
 <th>Activity</th>
 <th>Idle</th>
-<th>Status</th>
-<th>Source</th>
+<th>Last Push</th>
 </tr>
 `;
 
@@ -139,7 +188,7 @@ document.getElementById("leader").innerText =
 
 table.innerHTML+=`
 <tr>
-<td colspan="7" class="empty">
+<td colspan="6" class="empty">
 Waiting for competition start time (09:10 WIB)
 </td>
 </tr>
@@ -165,24 +214,23 @@ let scoreData=await fetch(
 
 score=parseInt(scoreData.score)||0;
 
-}catch(e){
+}catch{}
 
-console.log(repo.name,"score fetch error");
 
-}
+let commitTime=await getCommitTime(repo.repo);
 
 
 rows.push({
 
 name:repo.name,
 score:score,
-activity:activityStatus(score),
-idle:idleStatus(score)
+activity:activityStatus(commitTime),
+idle:idleStatus(commitTime),
+lastPush:minutesAgo(commitTime)
 
 });
 
 }
-
 
 
 rows.sort((a,b)=>b.score-a.score);
@@ -199,8 +247,7 @@ table.innerHTML+=`
 <td><b>${r.score}/100</b></td>
 <td>${r.activity}</td>
 <td>${r.idle}</td>
-<td>Tracked</td>
-<td>score.json</td>
+<td>${r.lastPush}</td>
 
 </tr>
 
@@ -226,7 +273,7 @@ setInterval(updateCountdown,1000);
 
 loadDashboard();
 
-setInterval(loadDashboard,30000);
+setInterval(loadDashboard,60000);
 
 </script>
 
